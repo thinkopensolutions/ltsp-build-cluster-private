@@ -1,38 +1,41 @@
 #!/bin/bash
 
 # LTSP Load Balancer
-# 172.31.100.15
+# 172.31.100.12
+
+function fail() {
+    echo "[FAIL $1]"
+    exit -1
+}
 
 # SSH
-ssh-keygen -t dsa
-echo "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAIEAswXDqk2+azGCQuqNRc/faBhGv0WcCP6gNXYt0nhGgOJ3zsP605+sk02Tz3sybJ3RRIylvMdelzOBbY/m5tSt2A5t+6VWWcEJqnroVJJcx24V/pmW7jpAsj68RxwxALU9NhB0vqB7EBoiEaSevH3yCYcqWVmrkNZU7RS4olfwICk= cmsa
-ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA9xJsdD3E0T6KvjYd/+gF2+lnUWkRyRBx3QcgcVUnj1MkLe8wC1IXQ4bE5VUs/ESj64mLejFVtqxdYheK2r/1im1ZuX7ObkXEQKMjAbqN451jxGeWLyvhfCVRu/7KPl//I8uJ3uQCukYSN8YAJKKDRl6rbLklhsK7pi31MYsZawvl1xZaztjzzT1E3fdSUfRyTJM+MxZ8RBSQLQXMwip4SvagIQLS+CTIhWxo5pWoXYynuksHtQEaWmPB8nDAApVguHLCL1oZNdzQ9ZRuHirsaBQV6bOxxPhJouGcZbfVGWdhrGVAjd8IwYbuydoeWe6yqTYNiYTfkoYxuOrbYGBbiQ== root@primeschool
-" > .ssh/authorized_keys
+if ! [ -s ~/.ssh/id_rsa ]; then
+    ssh-keygen -t rsa || fail "Generating ssh key"
+    echo "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA9xJsdD3E0T6KvjYd/+gF2+lnUWkRyRBx3QcgcVUnj1MkLe8wC1IXQ4bE5VUs/ESj64mLejFVtqxdYheK2r/1im1ZuX7ObkXEQKMjAbqN451jxGeWLyvhfCVRu/7KPl//I8uJ3uQCukYSN8YAJKKDRl6rbLklhsK7pi31MYsZawvl1xZaztjzzT1E3fdSUfRyTJM+MxZ8RBSQLQXMwip4SvagIQLS+CTIhWxo5pWoXYynuksHtQEaWmPB8nDAApVguHLCL1oZNdzQ9ZRuHirsaBQV6bOxxPhJouGcZbfVGWdhrGVAjd8IwYbuydoeWe6yqTYNiYTfkoYxuOrbYGBbiQ== root@primeschool" > .ssh/authorized_keys || fail "Importing ssh key"
+fi
 
-# Localização
-locale-gen pt_PT.UTF-8
-#dpkg-reconfigure locales
-dpkg-reconfigure tzdata
+if ! [ "$LANG" == "pt_PT.UTF-8" -o $(grep pt_PT.UTF-8 /etc/default/locale | wc -l) -eq 1 ]; then
+    locale-gen en_US.UTF-8 || fail "Generating locale en_US.UTF-8"
+    locale-gen pt_PT.UTF-8 || fail "Generating locale pt_PT.UTF-8"
+    dpkg-reconfigure locales || fail "Configuring locales"
+    dpkg-reconfigure tzdata || fail "Configuring tzdata"
+    update-locale LANG=pt_PT.UTF-8 LANGUAGE || fail "Setting LANG"
+fi
 
 # Instalação de aplicações
-echo "
-# byCMSA 18/11/2011
-deb http://ppa.launchpad.net/ltsp-cluster-team/ubuntu lucid main
-" >> /etc/apt/sources.list
-gpg --keyserver keyserver.ubuntu.com --recv 5BD53107696280BA
-gpg --export --armor 5BD53107696280BA | sudo apt-key add -
-apt-get -y update
-apt-get -y dist-upgrade
-apt-get -y install ltsp-cluster-lbserver --no-install-recommends
+apt-get -y update || fail "Updating repository"
+apt-get -y dist-upgrade || fail "Dist-upgrading"
+
+apt-get -y install ltsp-cluster-lbserver  || fail "Installing ltsp-cluster-lbserver"
+
+echo "172.31.100.13 ltsp-appserv01.primeschool.pt ltsp-appserv01" >> /etc/hosts || fail "Adding appserv to hosts"
 
 # Configure lbs
-vi /etc/ltsp/lbsconfig.xml
-# Set the group name as jaunty instead of EXAMPLE1
-# Set the number of threads to 1
-# Replace the default node by 192.168.0.5 with name appserv1
-# Remove the EXAMPLE2 group
-/etc/init.d/ltsp-cluster-lbserver restart
+sed -i "s/yourdomain.com/primeschool.pt/g" /etc/ltsp/lbsconfig.xml || fail "SEDing lbsconfig.xml"
+sed -i "s/max-threads=\"2\"/max-threads=\"1\"/g" /etc/ltsp/lbsconfig.xml || fail "SEDing lbsconfig.xml"
+sed -i "s/<group default=\"true\" name=\"default\">/<group default=\"true\" name=\"precise\">/g" /etc/ltsp/lbsconfig.xml || fail "SEDing lbsconfig.xml"
 
+/etc/init.d/ltsp-cluster-lbserver restart || fail "restarting lbs server"
 
 echo "OK ENTER FOR REBOOT"
 read x

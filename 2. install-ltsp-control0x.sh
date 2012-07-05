@@ -9,55 +9,26 @@ function fail() {
 }
 
 # SSH
-ssh-keygen -y -t rsa || fail "Generating ssh key"
-echo "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA9xJsdD3E0T6KvjYd/+gF2+lnUWkRyRBx3QcgcVUnj1MkLe8wC1IXQ4bE5VUs/ESj64mLejFVtqxdYheK2r/1im1ZuX7ObkXEQKMjAbqN451jxGeWLyvhfCVRu/7KPl//I8uJ3uQCukYSN8YAJKKDRl6rbLklhsK7pi31MYsZawvl1xZaztjzzT1E3fdSUfRyTJM+MxZ8RBSQLQXMwip4SvagIQLS+CTIhWxo5pWoXYynuksHtQEaWmPB8nDAApVguHLCL1oZNdzQ9ZRuHirsaBQV6bOxxPhJouGcZbfVGWdhrGVAjd8IwYbuydoeWe6yqTYNiYTfkoYxuOrbYGBbiQ== root@primeschool" > .ssh/authorized_keys || fail "Importing ssh key"
-locale-gen en_US.UTF-8 || fail "Generating locale en_US.UTF-8"
-locale-gen pt_PT.UTF-8 || fail "Generating locale pt_PT.UTF-8"
-dpkg-reconfigure locales || fail "Configuring locales"
-dpkg-reconfigure tzdata || fail "Configuring tzdata"
+if ! [ -s ~/.ssh/id_rsa ]; then
+    ssh-keygen -t rsa || fail "Generating ssh key"
+    echo "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA9xJsdD3E0T6KvjYd/+gF2+lnUWkRyRBx3QcgcVUnj1MkLe8wC1IXQ4bE5VUs/ESj64mLejFVtqxdYheK2r/1im1ZuX7ObkXEQKMjAbqN451jxGeWLyvhfCVRu/7KPl//I8uJ3uQCukYSN8YAJKKDRl6rbLklhsK7pi31MYsZawvl1xZaztjzzT1E3fdSUfRyTJM+MxZ8RBSQLQXMwip4SvagIQLS+CTIhWxo5pWoXYynuksHtQEaWmPB8nDAApVguHLCL1oZNdzQ9ZRuHirsaBQV6bOxxPhJouGcZbfVGWdhrGVAjd8IwYbuydoeWe6yqTYNiYTfkoYxuOrbYGBbiQ== root@primeschool" > .ssh/authorized_keys || fail "Importing ssh key"
+fi
+
+if ! [ "$LANG" == "pt_PT.UTF-8" -o $(grep pt_PT.UTF-8 /etc/default/locale | wc -l) -eq 1 ]; then
+    locale-gen en_US.UTF-8 || fail "Generating locale en_US.UTF-8"
+    locale-gen pt_PT.UTF-8 || fail "Generating locale pt_PT.UTF-8"
+    dpkg-reconfigure locales || fail "Configuring locales"
+    dpkg-reconfigure tzdata || fail "Configuring tzdata"
+    update-locale LANG=pt_PT.UTF-8 LANGUAGE || fail "Setting LANG"
+fi
 
 # Instalação de aplicações
-#echo "
-# byCMSA 18/11/2011
-#deb http://ppa.launchpad.net/ltsp-cluster-team/ubuntu lucid main
-#" >> /etc/apt/sources.list
-#gpg --keyserver keyserver.ubuntu.com --recv 5BD53107696280BA
-#gpg --export --armor 5BD53107696280BA | sudo apt-key add -
 apt-get -y update || fail "Updating repository"
 apt-get -y dist-upgrade || fail "Dist-upgrading"
 
 apt-get -y install ltsp-cluster-control postgresql || fail "Installing ltsp-cluster-control postgresql"
-# --no-install-recommends
 
-#echo "
-## byCMSA $(date +%d/%M/%Y)
-#Include /etc/phppgadmin/apache.conf
-#" >> /etc/apache2/apache2.conf
-#vi /etc/phppgadmin/apache.conf
-# Uncomment (remove the # sign) from the beginning of the line that says "Allow from all".
-# Next comment (add the # at the beginning of the line) where it says "allow from 127.0.0.1"
-#/etc/init.d/apache2 restart
 sed -i "s/yourdomain.com/primeschool.pt/g" /etc/ltsp/ltsp-cluster-control.config.php || fail "SEDing ltsp-cluster-control.config.php"
-#echo '<?php
-#This is a generated file, edit at your own risk !
-#        $CONFIG["first_setup_lock"] = "TRUE";
-#        $CONFIG["save"] = "Save";
-#        $CONFIG["lang"] = "en";
-#        $CONFIG["charset"] = "UTF-8";
-#        $CONFIG["use_https"] = "false";
-#        $CONFIG["terminal_auth"] = "false";
-#        $CONFIG["terminal_password"] = "...";
-#        $CONFIG["db_server"] = "localhost";
-#        $CONFIG["db_user"] = "ltsp";
-#        $CONFIG["db_password"] = "ltspcluster";
-#        $CONFIG["db_name"] = "ltsp";
-#        $CONFIG["db_type"] = "postgres";
-#        $CONFIG["auth_name"] = "EmptyAuth";
-#        $CONFIG["loadbalancer"] = "ltsp-loadbalancer01.primeschool.pt";
-#        $CONFIG["printer_servers"] = array("cups.yourdomain.com");
-#        $CONFIG["rootInstall"] = "/usr/share/ltsp-cluster-control/Admin/";
-#?>' > /etc/ltsp/ltsp-cluster-control.config.php
-# Add ltsp-loadbalancer01.primeschool.pt into /etc/hosts
 echo "172.31.100.12 ltsp-loadbalancer01.primeschool.pt ltsp-loadbalancer01" >> /etc/hosts || fail "Adding loadbalancer to hosts"
 
 # BUILD DATABASE
@@ -69,13 +40,6 @@ cd /root || fail "cd"
 
 wget http://bazaar.launchpad.net/%7Eltsp-cluster-team/ltsp-cluster/ltsp-cluster-control/download/head%3A/controlcenter.py-20090118065910-j5inpmeqapsuuepd-3/control-center.py || fail "getting control-center"
 wget http://bazaar.launchpad.net/%7Eltsp-cluster-team/ltsp-cluster/ltsp-cluster-control/download/head%3A/rdpldm.config-20090430131602-g0xccqrcx91oxsl0-1/rdp%2Bldm.config || fail "getting rdp+ldm config"
-
-# SET CONFIGURATION
-#db_user="ltsp"
-#db_password="ltspcluster"
-#db_host="localhost"
-#db_database="ltsp"
-#vi control-center.py
 
 apt-get -y install python-pygresql || fail "installing python-pygresql"
 
@@ -105,8 +69,8 @@ LANG => text
 LDM_ALLOW_USER => text
 LDM_AUTOLOGIN => list:True,False
 LDM_THEME => text
-LDM_LIMIT_ONE_SESSION => text
-LDM_LIMIT_ONE_SESSION_PROMPT => text
+LDM_LIMIT_ONE_SESSION => list:True,False
+LDM_LIMIT_ONE_SESSION_PROMPT => list:True,False
 LDM_DEBUG => list:True,False
 LDM_DIRECTX => list:True,False
 LDM_LANGUAGE => text
@@ -351,6 +315,7 @@ echo "# Visit
 # 	XKBLAYOUT = pt
 "
 
+# HOWTO CREATE ABOVE MANUALLY
 # Now on to the configuration of the root server.
 # We need to access the web interface phppgadmin to add items that you need to appear in the lts.conf file for ltsp client customization.
 # There are a few options in the database, but if you need to add a few more open a browser and go to http:///phppgadmin/
