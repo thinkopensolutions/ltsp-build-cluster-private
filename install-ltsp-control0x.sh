@@ -1,51 +1,30 @@
 #!/bin/bash
 
 # LTSP Control
-# 172.31.100.11
 
-function fail() {
-    echo "[FAIL $1]"
-    exit -1
-}
-
-# SSH
-if ! [ -s ~/.ssh/id_rsa ]; then
-    ssh-keygen -t rsa || fail "Generating ssh key"
-    echo "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA9xJsdD3E0T6KvjYd/+gF2+lnUWkRyRBx3QcgcVUnj1MkLe8wC1IXQ4bE5VUs/ESj64mLejFVtqxdYheK2r/1im1ZuX7ObkXEQKMjAbqN451jxGeWLyvhfCVRu/7KPl//I8uJ3uQCukYSN8YAJKKDRl6rbLklhsK7pi31MYsZawvl1xZaztjzzT1E3fdSUfRyTJM+MxZ8RBSQLQXMwip4SvagIQLS+CTIhWxo5pWoXYynuksHtQEaWmPB8nDAApVguHLCL1oZNdzQ9ZRuHirsaBQV6bOxxPhJouGcZbfVGWdhrGVAjd8IwYbuydoeWe6yqTYNiYTfkoYxuOrbYGBbiQ== root@primeschool" > .ssh/authorized_keys || fail "Importing ssh key"
-fi
-
-if ! [ "$LANG" == "pt_PT.UTF-8" -o $(grep pt_PT.UTF-8 /etc/default/locale | wc -l) -eq 1 ]; then
-    locale-gen en_US.UTF-8 || fail "Generating locale en_US.UTF-8"
-    locale-gen pt_PT.UTF-8 || fail "Generating locale pt_PT.UTF-8"
-    dpkg-reconfigure locales || fail "Configuring locales"
-    dpkg-reconfigure tzdata || fail "Configuring tzdata"
-    update-locale LANG=pt_PT.UTF-8 LANGUAGE || fail "Setting LANG"
-fi
-
-# Instalação de aplicações
-apt-get -y update || fail "Updating repository"
-apt-get -y dist-upgrade || fail "Dist-upgrading"
+. ltsp-include.sh
 
 apt-get -y install ltsp-cluster-control postgresql || fail "Installing ltsp-cluster-control postgresql"
 
-sed -i "s/yourdomain.com/primeschool.pt/g" /etc/ltsp/ltsp-cluster-control.config.php || fail "SEDing ltsp-cluster-control.config.php"
-if ! [ $(cat /etc/hosts | grep ltsp-loadbalancer01 | wc -l) -gt 0 ]; then
-    echo "172.31.100.12 ltsp-loadbalancer01.primeschool.pt ltsp-loadbalancer01" >> /etc/hosts || fail "Adding loadbalancer to hosts"
+sed -i "s/yourdomain.com/$DOMAIN/g" /etc/ltsp/ltsp-cluster-control.config.php || fail "SEDing ltsp-cluster-control.config.php"
+
+if ! [ $(cat /etc/hosts | grep ${APPs[$LOADBALANCER]} | wc -l) -gt 0 ]; then
+    echo "$NETWORK.$LOADBALANCER ${APPs[$LOADBALANCER]}.$DOMAIN ${APPs[$LOADBALANCER]}" >> /etc/hosts || fail "Adding loadbalancer to hosts"
 fi
 
 # BUILD DATABASE
-sudo -u postgres createuser -SDRlP ltsp || fail "Creating db user"
-sudo -u postgres createdb ltsp -O ltsp || fail "Creating db database"
-cd /usr/share/ltsp-cluster-control/DB/ || fail "cd"
-cat schema.sql functions.sql | psql -h localhost ltsp ltsp || fail "populate db"
-cd /root || fail "cd"
+sudo -u postgres createuser -SDRlP ltsp || fail "Creating postgres user"
+sudo -u postgres createdb ltsp -O ltsp || fail "Creating ltsp database"
+cd /usr/share/ltsp-cluster-control/DB/ || fail "Changing to directory /usr/share/ltsp-cluster-control/DB/"
+cat schema.sql functions.sql | psql -h localhost ltsp ltsp || fail "Building database"
+cd /root || fail "Changing to directory /root"
 
-wget http://bazaar.launchpad.net/%7Eltsp-cluster-team/ltsp-cluster/ltsp-cluster-control/download/head%3A/controlcenter.py-20090118065910-j5inpmeqapsuuepd-3/control-center.py || fail "getting control-center"
-wget http://bazaar.launchpad.net/%7Eltsp-cluster-team/ltsp-cluster/ltsp-cluster-control/download/head%3A/rdpldm.config-20090430131602-g0xccqrcx91oxsl0-1/rdp%2Bldm.config || fail "getting rdp+ldm config"
+wget http://bazaar.launchpad.net/%7Eltsp-cluster-team/ltsp-cluster/ltsp-cluster-control/download/head%3A/controlcenter.py-20090118065910-j5inpmeqapsuuepd-3/control-center.py || fail "Getting control-center"
+wget http://bazaar.launchpad.net/%7Eltsp-cluster-team/ltsp-cluster/ltsp-cluster-control/download/head%3A/rdpldm.config-20090430131602-g0xccqrcx91oxsl0-1/rdp%2Bldm.config || fail "Getting rdp+ldm config"
 
-apt-get -y install python-pygresql || fail "installing python-pygresql"
+apt-get -y install python-pygresql || fail "Installing python-pygresql"
 
-/etc/init.d/apache2 stop || fail "stopping apache2"
+/etc/init.d/apache2 stop || fail "Stopping apache2"
 echo "CD_VOLUME => text
 CONFIGURE_FSTAB => list:True,False
 CONFIGURE_X => list:True,False
@@ -300,21 +279,21 @@ X_TOUCH_RTPDELAY => text
 X_TOUCH_UNDELAY => text
 X_VERTREFRESH => text
 X_VIDEO_RAM => text
-X_VIRTUAL => text" > rdp+ldm.config || fail "creating rdp+ldm.config"
-python control-center.py rdp+ldm.config || fail "importing rdp-ldm.config"
-/etc/init.d/apache2 start || fail "starting apache2"
+X_VIRTUAL => text" > rdp+ldm.config || fail "Creating rdp+ldm.config"
+python control-center.py rdp+ldm.config || fail "Importing rdp-ldm.config to database"
+/etc/init.d/apache2 start || fail "Starting apache2"
 
 echo "# Visit
-# http://172.31.100.11/ltsp-cluster-control/Admin/
+# http://$NETWORK.$CONTROL/ltsp-cluster-control/Admin/
 #
-# Set:
-# 	LANG = pt_PT.UTF-8
+# And set:
+# 	LANG = $LTSP_LANG
 # 	LDM_DIRECTX = True
 # 	LDM_SERVER = %LOADBALANCER%
 # 	LOCAL_APPS_MENU = True
 # 	SCREEN_07 = ldm
 # 	TIMESERVER = ntp.ubuntu.com
-# 	XKBLAYOUT = pt
+# 	XKBLAYOUT = $LANG_CODE
 "
 
 # HOWTO CREATE ABOVE MANUALLY
@@ -345,13 +324,5 @@ echo "# Visit
 #		Click Insert.
 # Done with editing the database. Now go to http:///ltsp-cluster-control/Admin/
 
-echo "OK ENTER FOR REBOOT"
-read x
-reboot
-
-
-
-
-
-
+echo "OK ENTER FOR REBOOT"; read x; reboot
 
