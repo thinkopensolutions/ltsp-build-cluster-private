@@ -75,7 +75,7 @@ gconftool-2 --direct --config-source xml:readwrite:/etc/gconf/gconf.xml.defaults
 #cd /usr/lib/mozilla/plugins
 #ln -s /usr/java/jre1.6.0_29/lib/i386/libnpjp2.so .
 
-#LDAP
+# LDAP
 #apt-get -y install libnss-ldap
 #vi /etc/ldap.conf --> set tls_checkpeer no
 #auth-client-config -t nss -p lac_ldap
@@ -83,14 +83,12 @@ gconftool-2 --direct --config-source xml:readwrite:/etc/gconf/gconf.xml.defaults
 #remove use_authtok do ficheiro "vi /etc/pam.d/common-password"
 #reboot
 
-#NFS
-#apt-get install portmap
-#dpkg-reconfigure portmap
-#/etc/init.d/portmap stop
-#update-rc.d -f portmap remove
-#update-rc.d portmap start 20  2 3 4 5 . stop 80  0 1 6 .
-#/etc/init.d/portmap start
-#apt-get install nfs-common
+# NFS
+apt-get -y install nfs-common || fail "installing NFS common"
+
+if ! [ $(cat /etc/fstab | grep "/home /home nfs" | wc -l) -gt 0 ]; then
+    echo "172.31.100.27:/home /home nfs rsize=8192,wsize=8192,timeo=14,intr" >> /etc/fstab || fail "configuring mount point"
+fi
 
 # RC.LOCAL
 #echo "#!/bin/sh -e
