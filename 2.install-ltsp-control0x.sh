@@ -29,7 +29,9 @@ apt-get -y dist-upgrade || fail "Dist-upgrading"
 apt-get -y install ltsp-cluster-control postgresql || fail "Installing ltsp-cluster-control postgresql"
 
 sed -i "s/yourdomain.com/primeschool.pt/g" /etc/ltsp/ltsp-cluster-control.config.php || fail "SEDing ltsp-cluster-control.config.php"
-echo "172.31.100.12 ltsp-loadbalancer01.primeschool.pt ltsp-loadbalancer01" >> /etc/hosts || fail "Adding loadbalancer to hosts"
+if ! [ $(cat /etc/hosts | grep ltsp-loadbalancer01 | wc -l) -gt 0 ]; then
+    echo "172.31.100.12 ltsp-loadbalancer01.primeschool.pt ltsp-loadbalancer01" >> /etc/hosts || fail "Adding loadbalancer to hosts"
+fi
 
 # BUILD DATABASE
 sudo -u postgres createuser -SDRlP ltsp || fail "Creating db user"
