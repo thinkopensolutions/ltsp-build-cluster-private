@@ -128,7 +128,7 @@ function update_applications() {
     # Avoid to run
     if ! [ -e /tmp/.apt ]; then
         apt-get -y update || fail $HOSTNAME "Updating repository"
-        apt-get -y install htop tree || fail $HOSTNAME "Installing utilities"
+        apt-get -y install htop tree cups || fail $HOSTNAME "Installing utilities"
         apt-get -y dist-upgrade || fail $HOSTNAME "Dist-Upgrading"
         touch /tmp/.apt
     fi
