@@ -33,15 +33,19 @@ update_applications
 
 if ! [ -e /tmp/.aptinstall ]; then
     touch /tmp/.aptinstall
-    apt-get -y install ltsp-cluster-control postgresql python-pygresql || fail "Installing ltsp-cluster-control postgresql python-pygresql"
+    apt-get -y install ltsp-cluster-control postgresql python-pygresql || fail "Installing ltsp-cluster-control postgresql"
     install_ldap_client
     install_nfs_client
     apt-get -y autoremove
 fi
 
 ln -sf /etc/hosts /root/hosts
+ln -sf /etc/cups/cupsd.conf /root/cupsd.conf
 ln -sf /etc/ltsp/ltsp-cluster-control.config.php /root/ltsp-cluster-control.config.php
 sed_file /etc/ltsp/ltsp-cluster-control.config.php "yourdomain.com" "$DOMAIN"
+sed_file /etc/cups/cupsd.conf "^Listen localhost:631$" "#Listen localhost:631"
+sed_file /etc/cups/cupsd.conf "^Listen /var/run/cups/cups.sock$" "Listen /var/run/cups/cups.sock\nListen ${APPs[$DHCP_CONTROL_SERVER]}:631"
+sed_file /etc/cups/cupsd.conf "^Listen localhost:631$" "Listen $NETWORK.$DHCP_CONTROL_SERVER:631"
 add2file /etc/hosts "$NETWORK.$DHCP_LOADBALANCER_SERVER ${APPs[$DHCP_LOADBALANCER_SERVER]}.$DOMAIN ${APPs[$DHCP_LOADBALANCER_SERVER]}"
 
 # BUILD DATABASE

@@ -29,19 +29,23 @@ source $(dirname $0)/ltsp-include.sh
 
 # Create ordered list of containers
 VMIDs=$(for id in ${!APPs[@]}; do echo $id; done | sort -n)
+PROXMOXs=$(for id in ${!NODEs[@]}; do echo $id; done | sort -n)
 
 function setup_nfs_proxmox() {
-    # Setup PROXMOX to be able to run NFS service
-    # To be able to run nfs-kernel-server the following modules must be running in PROXMOX node server nfs and nfsd
-    add2rclocal "modprobe nfs"
-    add2rclocal "modprobe nfsd"
-    modprobe nfs
-    modprobe nfsd
-
-    add2file /etc/sysctl.d/vzctl.conf "sunrpc.ve_allow_rpc = 1"
-    add2file /etc/sysctl.d/vzctl.conf "fs.nfs.ve_allow_nfs = 1"
-    add2file /etc/sysctl.d/vzctl.conf "kernel.ve_allow_kthreads = 1"
-    sysctl -p
+    for proxmox in $PROXMOXs; do
+        # Setup PROXMOX to be able to run NFS service
+        # To be able to run nfs-kernel-server the following modules must be running in PROXMOX node server nfs and nfsd
+        ssh $NETWORK.$proxmox "if ! [ $(grep \"modprobe nfs\" /etc/rc.local | wc -l ) -gt 0 ]; then sed -i \"s/^exit 0$/modprobe nfs\nexit 0/g\" /etc/rc.local; fi
+        if ! [ $(grep \"modprobe nfsd\" /etc/rc.local | wc -l ) -gt 0 ]; then sed -i \"s/^exit 0$/modprobe nfsd\n\nexit 0/g\" /etc/rc.local; fi
+        modprobe nfs
+        modprobe nfsd
+        echo \"sunrpc.ve_allow_rpc = 1\" >> /etc/sysctl.d/vzctl.conf 
+        echo \"fs.nfs.ve_allow_nfs = 1\" >> /etc/sysctl.d/vzctl.conf
+        echo \"kernel.ve_allow_kthreads = 1\" >> /etc/sysctl.d/vzctl.conf
+        sysctl -p" || fail $HOSTNAME "Setting NFS in PROXMOX nodes"
+    done
+    rsync -a LTSP-Build-Cluster $NETWORK.$proxmox:/root/
+    exit
 }
 
 function create_qemu_template_file() {

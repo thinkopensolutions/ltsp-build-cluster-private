@@ -33,8 +33,9 @@ update_applications
 
 if ! [ -e /tmp/.aptinstall ]; then
     touch /tmp/.aptinstall
-    apt-get -y install ltsp-server ltsp-cluster-lbagent ltsp-cluster-accountmanager $APPLICATIONS || fail "Installing applications"
+    apt-get -y install cups ltsp-server ltsp-cluster-lbagent ltsp-cluster-accountmanager $APPLICATIONS || fail "Installing applications"
     apt-get -y autoremove
+    add2file /etc/hosts "$NETWORK.$DHCP_CONTROL_SERVER cups.$DOMAIN cups"
 fi
 
 if ! [ -e /tmp/.aptafter ]; then
@@ -46,17 +47,17 @@ if ! [ -e /tmp/.aptafter ]; then
     update-rc.d -f gdm remove || fail "Remove gdm from init"
     update-rc.d -f bluetooth remove || fail "Remove bluetooth from init"
     update-rc.d -f pulseaudio remove || fail "Remove pulseaudio from init"
-    echo "[Desktop Entry]
-    Version=1.0
-    Encoding=UTF-8
-    Name=PulseAudio Session Management
-    Comment=Load module-suspend-on-idle into PulseAudio
-    Exec=pactl load-module module-suspend-on-idle
-    Terminal=false
-    Type=Application
-    Categories=
-    GenericName=
-    " > /etc/xdg/autostart/pulseaudio-module-suspend-on-idle.desktop || fail "pulseaudio-module-suspend-on-idle.desktop"
+#    echo "[Desktop Entry]
+#Version=1.0
+#Encoding=UTF-8
+#Name=PulseAudio Session Management
+#Comment=Load module-suspend-on-idle into PulseAudio
+#Exec=pactl load-module module-suspend-on-idle
+#Terminal=false
+#Type=Application
+#Categories=
+#GenericName=
+#" > /etc/xdg/autostart/pulseaudio-module-suspend-on-idle.desktop || fail "pulseaudio-module-suspend-on-idle.desktop"
     /etc/init.d/ltsp-cluster-lbagent restart || fail "Restarting lbagent"
     # Restart the loadbalancer agent:
     /etc/init.d/ltsp-cluster-lbagent restart || fail "Restart the loadbalancer agent"
