@@ -47,33 +47,24 @@ gconftool-2 --direct --config-source xml:readwrite:/etc/gconf/gconf.xml.mandator
 gconftool-2 --direct --config-source xml:readwrite:/etc/gconf/gconf.xml.mandatory --set --type boolean /apps/gnome_settings_daemon/screensaver/start_screensaver False || fail "gconftool 3"
 gconftool-2 --direct --config-source xml:readwrite:/etc/gconf/gconf.xml.defaults --set --type integer /apps/gnome-power-manager/timeout/sleep_display_ac 0 || fail "gconftool 4"
 
-# Install Java
-#mkdir /usr/java
-#cd /usr/java
-#scp root@172.31.100.1:~/jre-6u29-linux-i586.bin .
-#chmod u+x jre-6u29-linux-i586.bin
-#./jre-6u29-linux-i586.bin
-#cd /usr/lib/mozilla/plugins
-#ln -s /usr/java/jre1.6.0_29/lib/i386/libnpjp2.so .
-
-# LDAP
-#apt-get -y install libnss-ldap
-#vi /etc/ldap.conf --> set tls_checkpeer no
-#auth-client-config -t nss -p lac_ldap
-#pam-auth-update
-#remove use_authtok do ficheiro "vi /etc/pam.d/common-password"
-#reboot
+# LDAP Client
+if ! [ $(cat /etc/hosts | grep ${APPs[$LDAP]} | wc -l) -gt 0 ]; then
+    echo "$NETWORK.$LDAP ${APPs[$LDAP]}.$DOMAIN  ${APPs[$LDAP]}" >> /etc/hosts || fail "Adding ${APPs[$LDAP]} to hosts"
+    echo "$NETWORK.25 ldap02.$DOMAIN  ldap02" >> /etc/hosts || fail "Adding ldap02 to hosts"
+fi
+apt-get -y install libnss-ldap
+dpkg-reconfigure ldap-auth-config
+auth-client-config -t nss -p lac_ldap
+pam-auth-update
 
 # NFS
 apt-get -y install nfs-common || fail "Installing NFS common"
-
 if ! [ $(cat /etc/rc.local | grep "start portmap" | wc -l) -gt 0 ]; then
     sed -i "s/^exit 0$/start portmap\n\nexit 0/g" /etc/rc.local || fail "SEDing rc.local"
     start portmap
 fi
-
 if ! [ $(cat /etc/fstab | grep "/home /home nfs" | wc -l) -gt 0 ]; then
-    echo "$NETWORK.$NFS_SERVER:/home /home nfs rsize=8192,wsize=8192,timeo=14,intr" >> /etc/fstab || fail "configuring mount point"
+    echo "$NETWORK.$NFS_SERVER:/home /home nfs rsize=8192,wsize=8192,timeo=14,intr,nolock" >> /etc/fstab || fail "configuring mount point"
     mount -a
 fi
 

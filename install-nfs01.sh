@@ -2,11 +2,29 @@
 
 # NFS Server
 
-. ltsp-include.sh
+echo "### README FIRST ###
+This is to do on PROXMOX node server where the VM will run.
+To be able to run nfs-kernel-server the following modules must be running in PROXMOX node server:
+    modprobe nfs
+    modprobe nfsd
+    (should add them to /etc/modules)
+Validate if it is running on node:
+    proxmox01:~# cat /proc/filesystems | grep nfsd
+    (must has nfsd)
+Add this lines to /etc/sysctl.d/vzctl.conf:
+    sunrpc.ve_allow_rpc = 1
+    fs.nfs.ve_allow_nfs = 1
+    kernel.ve_allow_kthreads = 1
+After that run:
+    proxmox01:~# sysctl -p
+Stop NFS server VM and run (note nfsd):
+    proxmox01:~# vzctl set VMID --features \"nfsd:on\" --save
+Stop all application servers and run (note nfs):
+    proxmox01:~# vzctl set VMID --features \"nfs:on\" --save
+(PRESS ENTER TO INSTALL NFS SERVER OR CTRL+C TO CANCEL)"
+read x
 
-# Instalação de aplicações
-apt-get -y update || fail "Updating repository"
-apt-get -y dist-upgrade || fail "Dist-upgrading"
+. ltsp-include.sh
 
 apt-get -y install nfs-kernel-server || fail "Installing nfs-kernel-server"
 
