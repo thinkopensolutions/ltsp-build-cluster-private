@@ -25,23 +25,19 @@
 
 # DHCP02
 . $(dirname $0)/ltsp-include.sh
-HOSTNAME=$(hostname)
 if ! [ "$(basename $0)" == "$HOSTNAME.sh" ]; then fail $HOSTNAME "$WRONG_HOSTNAME_MSG"; fi
 
 configure_lang
 update_applications
 
-if ! [ -e /tmp/.aptinstall ]; then
-    touch /tmp/.aptinstall
-    apt-get -y install isc-dhcp-server
-    apt-get -y autoremove
+if ! [ -e /tmp/dhcp02.install ]; then
+    apt-get -y install isc-dhcp-server || fail "Installing isc-dhcp-server"
+    apt-get -y autoremove && apt-get -y autoclean || fail "Cleaning"
+    touch /tmp/dhcp02.install
 fi
 
 dhcp_file="/etc/dhcp/dhcpd.conf"
 
-ln -sf $dhcp_file /root/dhcpd.conf
-ln -sf /etc/default/isc-dhcp-server /root/isc-dhcp-server
-#sed_file $dhcp_file "^#authoritative;$" "authoritative;"
 sed_file $dhcp_file "^option domain-name" "# option domain-name"
 sed_file /etc/default/isc-dhcp-server "^INTERFACES=\"\"$" "INTERFACES=\"eth0\""
   
@@ -77,12 +73,12 @@ subnet $NETWORK.0 netmask 255.255.255.0 {
     max-lease-time 600;
     range $NETWORK.$DHCP_POOL_INI $NETWORK.$DHCP_POOL_FIN;
   }
-}" >> $dhcp_file || fail $HOSTNAME "Appending to $dhcp_file file"
+}" >> $dhcp_file || fail "Appending to $dhcp_file file"
 fi
 
-if ! [ -e /root/.aptrestart ]; then
-    touch /root/.aptrestart
-    echo "$(pcolor yellow)REBOOT...$(pcolor default)"
+if ! [ -e /root/dhcp02.reboot ]; then
+    touch /root/dhcp02.reboot
+    warning "REBOOTING..."
     reboot &
 fi
 

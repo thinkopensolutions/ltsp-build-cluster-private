@@ -28,22 +28,29 @@
 
 . $(dirname $0)/ltsp-include.sh
 
+function ask_ldap_pass() {
+    warning "This script has to give a password for LDAP configuration."
+    echo -n "Please insert the admin LDAP password: "
+    read pass
+    echo $pass
+}
+
 function install_webmin() {
     # Install Webmin
     add2file /etc/apt/sources.list "deb http://download.webmin.com/download/repository sarge contrib"
     add2file /etc/apt/sources.list "deb http://webmin.mirror.somersettechsolutions.co.uk/repository sarge contrib"
     cd /root
-    if ! [ -e jcameron-key.asc ]; then
+    if ! [ -e ltsp-jcameron-key.asc ]; then
         wget http://www.webmin.com/jcameron-key.asc || fail "Wgetting jcameron key"
-        apt-key add jcameron-key.asc || fail "Adding jcameron key"
+        mv jcameron-key.asc ltsp-jcameron-key.asc
+        apt-key add ltsp-jcameron-key.asc || fail "Adding jcameron key"
         apt-get update || fail "Updating"
         apt-get -y install webmin || fail "Installing webmin"
     fi
 }
 
 function add_indexes() {
-    #### ADD INDEX ####
-    file="indexes.ldif"
+    file="ltsp-indexes.ldif"
     if ! [ -e $file ]; then
         echo "dn: olcDatabase={1}hdb,cn=config
 add: olcDbIndex
@@ -58,7 +65,7 @@ olcDbIndex: uniqueMember eq,pres" > "$file"
 
 function logging() {
     #### LOGGING ####
-    file="logging.ldif"
+    file="ltsp-logging.ldif"
     if ! [ -e $file ]; then
         echo "dn: cn=config
 changetype: modify
@@ -69,8 +76,7 @@ olcLogLevel: stats" > "$file"
 }
 
 function replication_master_side() {
-    #### REPLICATION ####
-    provider="provider_sync.ldif"
+    provider="ltsp-provider_sync.ldif"
     if ! [ -e $provider ]; then
         echo "# Add indexes to the frontend db.
 dn: olcDatabase={1}hdb,cn=config
@@ -137,19 +143,15 @@ olcAccessLogPurge: 07+00:00 01+00:00" > "$provider"
             sudo -u openldap cp /var/lib/ldap/DB_CONFIG /var/lib/ldap/accesslog
             sudo service apparmor reload
         fi
-            
+
         ldapadd -Q -Y EXTERNAL -H ldapi:/// -f $provider
         service slapd restart
     fi
 }
 
 function replication_consumer_side() {
-    #### REPLICATION ####
-    if ! [ $(grep ${APPs[$DHCP_LDAP01_SERVER]} /etc/hosts | wc -l) -gt 0 ]; then
-        echo "$NETWORK.$DHCP_LDAP01_SERVER ${APPs[$DHCP_LDAP01_SERVER]}.$DOMAIN  ${APPs[$DHCP_LDAP01_SERVER]}" >> /etc/hosts || fail "Adding ${APPs[$DHCP_LDAP01_SERVER]} to hosts"
-    fi
-
-    file="consumer_sync.ldif"
+    add2file /etc/hosts "$NETWORK.$DHCP_LDAP01_SERVER ${APPs[$DHCP_LDAP01_SERVER]}.$DOMAIN ${APPs[$DHCP_LDAP01_SERVER]}"
+    file="ltsp-consumer_sync.ldif"
     if ! [ -e $file ]; then
         echo "dn: cn=module{0},cn=config
 changetype: modify
@@ -163,7 +165,7 @@ olcDbIndex: entryUUID eq
 -
 add: olcSyncRepl
 olcSyncRepl: rid=$(hostname | tail -c -2) provider=ldap://${APPs[$DHCP_LDAP01_SERVER]}.$DOMAIN bindmethod=simple binddn=\"cn=admin,$LDAP_DN\" 
- credentials=$(cat $ROOT_PASS_FILE) searchbase=\"$LDAP_DN\" logbase=\"cn=accesslog\" 
+ credentials=$(ask_ldap_pass) searchbase=\"$LDAP_DN\" logbase=\"cn=accesslog\" 
  logfilter=\"(&(objectClass=auditWriteObject)(reqResult=0))\" schemachecking=on 
  type=refreshAndPersist retry=\"60 +\" syncdata=accesslog
 -
@@ -308,7 +310,7 @@ olcTLSCertificateKeyFile: /etc/ssl/private/${ldap}_slapd_key.pem" > "$file"
         echo "dn: olcDatabase={1}hdb,cn=config
 replace: olcSyncRepl
 olcSyncRepl: rid=0 provider=ldap://${APPs[$DHCP_LDAP01_SERVER]}.$DOMAIN bindmethod=simple
- binddn=\"cn=admin,$LDAP_DN\" credentials=$(cat $ROOT_PASS_FILE) searchbase=\"$LDAP_DN\"
+ binddn=\"cn=admin,$LDAP_DN\" credentials=$(ask_ldap_pass) searchbase=\"$LDAP_DN\"
  logbase=\"cn=accesslog\" logfilter=\"(&(objectClass=auditWriteObject)(reqResult=0))\"
  schemachecking=on type=refreshAndPersist retry=\"60 +\" syncdata=accesslog
  starttls=critical tls_reqcert=demand" > "$file"
@@ -316,4 +318,3 @@ olcSyncRepl: rid=0 provider=ldap://${APPs[$DHCP_LDAP01_SERVER]}.$DOMAIN bindmeth
         service slapd restart
     fi
 }
-

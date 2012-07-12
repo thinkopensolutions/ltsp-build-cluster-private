@@ -25,60 +25,80 @@
 
 # LTSP Control
 . $(dirname $0)/ltsp-include.sh
-HOSTNAME=$(hostname)
 if ! [ "$(basename $0)" == "$HOSTNAME.sh" ]; then fail $HOSTNAME "$WRONG_HOSTNAME_MSG"; fi
 
 configure_lang
 update_applications
 
-if ! [ -e /tmp/.aptinstall ]; then
-    touch /tmp/.aptinstall
+function install_cups_server() {
+    # Complete Driver Set
+    # To configure the complete PPD file set, head over to LinuxPrinting.org
+    # (http://www.linuxprinting.org/download/foomatic) and
+    # download the latest ("current") foomatic filter tarball.
+    #site="http://www.openprinting.org/download/foomatic"
+    #recent_file="foomatic-filters-4.0-20120711.tar.gz"
+    #wget -O /tmp/$recent_file $site/$recent -U ""
+    #tar -xzf /tmp/foomatic-filters-ppds*.tar.gz -C /tmp
+    #pushd /tmp/foomatic-filters-ppds*
+    #./install --gzip
+    #/etc/init.d/cups restart
+    #tail /var/log/cups/error_log
+    #popd
+    #rm -Rf /tmp/foomatic-filters-ppds*
+    sed_file /etc/cups/cupsd.conf "^Listen /var/run/cups/cups.sock$" "Listen /var/run/cups/cups.sock\nListen ${APPs[$DHCP_CONTROL_SERVER]}:631" "^Listen ${APPs[$DHCP_CONTROL_SERVER]}:631$"
+    sed_file /etc/cups/cupsd.conf "^Browsing Off$" "Browsing On"
+    sed_file /etc/cups/cupsd.conf "^<Location />$" "<Location />\nAllow from @LOCAL" "^<Location />\nAllow from @LOCAL$"
+    sed_file /etc/cups/cupsd.conf "^<Location /admin>$" "<Location /admin>\nAllow from @LOCAL" "^<Location /admin>\nAllow from @LOCAL$"
+    add2file /etc/hosts "$NETWORK.$DHCP_CUPS_SERVER cups.$DOMAIN cups"
+}
+
+if ! [ -e /tmp/ltsp-control01.install ]; then
     apt-get -y install ltsp-cluster-control postgresql python-pygresql || fail "Installing ltsp-cluster-control postgresql"
-    install_ldap_client
-    install_nfs_client
-    apt-get -y autoremove
+    apt-get -y autoremove && apt-get -y autoclean || fail "Cleaning"
+    touch /tmp/ltsp-control01.install
 fi
 
-ln -sf /etc/hosts /root/hosts
-ln -sf /etc/cups/cupsd.conf /root/cupsd.conf
-ln -sf /etc/ltsp/ltsp-cluster-control.config.php /root/ltsp-cluster-control.config.php
+if ! [ -e /tmp/ltsp-control01.cups ]; then
+    install_cups_server
+    touch /tmp/ltsp-control01.cups
+fi
+
+install_ldap_client || fail "Installing LDAP client"
+install_nfs_client || fail "Installing NFS client"
+
 sed_file /etc/ltsp/ltsp-cluster-control.config.php "yourdomain.com" "$DOMAIN"
-sed_file /etc/cups/cupsd.conf "^Listen localhost:631$" "#Listen localhost:631"
-sed_file /etc/cups/cupsd.conf "^Listen /var/run/cups/cups.sock$" "Listen /var/run/cups/cups.sock\nListen ${APPs[$DHCP_CONTROL_SERVER]}:631"
-sed_file /etc/cups/cupsd.conf "^Listen localhost:631$" "Listen $NETWORK.$DHCP_CONTROL_SERVER:631"
 add2file /etc/hosts "$NETWORK.$DHCP_LOADBALANCER_SERVER ${APPs[$DHCP_LOADBALANCER_SERVER]}.$DOMAIN ${APPs[$DHCP_LOADBALANCER_SERVER]}"
 
 # BUILD DATABASE
 # The following sudo commands cannot be executed inside /root
 cd /
 if ! [ $(sudo -u postgres psql -l | grep $DB_NAME | wc -l) -gt 0 ]; then
-    echo "$(pcolor yellow)Creating the user \"$DB_USER\" in postgres database.
-#Insert the password definde in config \"$DB_PASS\".$(pcolor default)"
+    warning "Creating the user \"$(cyan)$DB_USER$(default)\" in postgres database.
+Insert the password defined in config \"$(cyan)$DB_PASS$(default)\"."
     sudo -u postgres createuser -SDRlP $DB_USER || fail "Creating postgres user"
-    echo "$(pcolor yellow)Creating database \"$DB_NAME\". Put password you gave above \"$DB_PASS\".$(pcolor default)"
+    warning "Creating database \"$(cyan)$DB_NAME$(default)\". Put password you gave above \"$(cyan)$DB_PASS$(default)\")."
     sudo -u postgres createdb $DB_NAME -O $DB_USER || fail "Creating ltsp database"
-    echo "$(pcolor red)ATTENTION:$(pcolor yellow) If this step fails, run in $HOSTNAME shell the following:
+    warning "If this step fails, run in $HOSTNAME shell the following:$(white)
     root@proxmox01:~$ ssh root@$NETWORK.$DHCP_CONTROL_SERVER
     root@$HOSTNAME:~$ cd /usr/share/ltsp-cluster-control/DB
-    root@$HOSTNAME:~$ cat schema.sql functions.sql | psql -h localhost $DB_NAME $DB_USER
-And... run script again...$(pcolor default)"
-    cd /usr/share/ltsp-cluster-control/DB
+    root@$HOSTNAME:~$ cat schema.sql functions.sql | psql -h localhost $DB_NAME $DB_USER$(default)
+And... run script again..."
+    cd /usr/share/ltsp-cluster-control/DB || fail "Moving to directory /usr/share/ltsp-cluster-control/DB/"
     cat schema.sql functions.sql | psql -h localhost $DB_NAME $DB_USER || fail "Populating database"
-    #cd /usr/share/ltsp-cluster-control/DB || fail "Moving to directory /usr/share/ltsp-cluster-control/DB/"
-    # cat schema.sql functions.sql | psql -h localhost $DB_NAME $DB_USER || fail "Populating database"
 fi
 
 cd /root
-if ! [ -e control-center.py ]; then
+if ! [ -e ltsp-control-center.py ]; then
     wget http://bazaar.launchpad.net/%7Eltsp-cluster-team/ltsp-cluster/ltsp-cluster-control/download/head%3A/controlcenter.py-20090118065910-j5inpmeqapsuuepd-3/control-center.py || fail "Downloading control-center.py"
-    chmod 600 control-center.py
-    sed_file control-center.py "^db_user=\"ltsp\"$" "db_user=\"$DB_USER\""
-    sed_file control-center.py "^db_password=\"ltspcluster\"$" "db_password=\"$DB_PASS\""
-    sed_file control-center.py "^db_database=\"ltsp\"$" "db_database=\"$DB_NAME\""
+    mv control-center.py ltsp-control-center.py
+    chmod 0600 ltsp-control-center.py
+    sed_file ltsp-control-center.py "^db_user=\"ltsp\"$" "db_user=\"$DB_USER\""
+    sed_file ltsp-control-center.py "^db_password=\"ltspcluster\"$" "db_password=\"$DB_PASS\""
+    sed_file ltsp-control-center.py "^db_database=\"ltsp\"$" "db_database=\"$DB_NAME\""
     #wget http://bazaar.launchpad.net/%7Eltsp-cluster-team/ltsp-cluster/ltsp-cluster-control/download/head%3A/rdpldm.config-20090430131602-g0xccqrcx91oxsl0-1/rdp%2Bldm.config || fail "Downloading rdp+ldm config"
 fi
 
-if ! [ -e rdp+ldm.config ]; then
+if ! [ -e ltsp-rdp+ldm.config ]; then
     /etc/init.d/apache2 stop || fail "Stopping apache2"
     echo "CD_VOLUME => text
 CONFIGURE_FSTAB => list:True,False
@@ -109,12 +129,13 @@ LDM_LIMIT_ONE_SESSION => list:True,False
 LDM_LIMIT_ONE_SESSION_PROMPT => list:True,False
 LDM_DEBUG => list:True,False
 LDM_DIRECTX => list:True,False
+LDM_GUESTLOGIN => list:True,False
 LDM_LANGUAGE => text
 LDM_LOGIN_TIMEOUT => text
 LDM_NODMPS => list:True,False
 LDM_PASSWORD => text
 LDM_PRINTER_DEFAULT => text
-LDM_PRINTER_LIST => multilist
+LDM_PRINTER_LIST => text
 LDM_SERVER => text
 LDM_SESSION => text
 LDM_SSHOPTIONS => text
@@ -128,11 +149,10 @@ LOCALDEV_DENY_FLOPPY => list:True,False
 LOCALDEV_DENY_INTERNAL_DISKS => list:True,False
 LOCALDEV_DENY_USB => list:True,False
 LOCAL_APPS => list:True,False
-LOCAL_APPS => list:True,False
 LOCAL_APPS_EXTRAMOUNTS => text
 LOCAL_APPS_MENU => list:True,False
-LOCAL_APPS_MENU_ITEMS => multilist
-LOCAL_APPS_WHITELIST => multilist
+LOCAL_APPS_MENU_ITEMS => text
+LOCAL_APPS_WHITELIST => text
 MIC_VOLUME => text
 MODULE_01 => text
 MODULE_02 => text
@@ -334,22 +354,23 @@ X_TOUCH_RTPDELAY => text
 X_TOUCH_UNDELAY => text
 X_VERTREFRESH => text
 X_VIDEO_RAM => text
-X_VIRTUAL => text" > rdp+ldm.config || fail "Creating rdp+ldm.config"
-    python control-center.py rdp+ldm.config || fail "Importing rdp-ldm.config to database"
+X_VIRTUAL => text" > ltsp-rdp+ldm.config || fail "Creating rdp+ldm.config"
+    python ltsp-control-center.py ltsp-rdp+ldm.config || fail "Importing rdp+ldm.config to database"
     /etc/init.d/apache2 start || fail "Starting apache2"
 fi
 
-echo "$(pcolor yellow)# Visit:
+warning "$(lightyellow)
+# Visit:
 #   http://$NETWORK.$DHCP_CONTROL_SERVER/ltsp-cluster-control/Admin/
 #
 # And set:
-# 	LANG = $LTSP_LANG
-# 	LDM_DIRECTX = True
-# 	LDM_SERVER = %LOADBALANCER%
-# 	LOCAL_APPS_MENU = True
-# 	SCREEN_07 = ldm
-# 	TIMESERVER = ntp.ubuntu.com
-# 	XKBLAYOUT = $LANG_CODE$(pcolor default)"
+# 	LANG = $(yellow)$LTSP_LANG$(lightyellow)
+# 	LDM_DIRECTX = $(yellow)True$(lightyellow)
+# 	LDM_SERVER = $(yellow)%LOADBALANCER%$(lightyellow)
+# 	LOCAL_APPS_MENU = $(yellow)True$(lightyellow)
+# 	SCREEN_07 = $(yellow)ldm$(lightyellow)
+# 	TIMESERVER = $(yellow)ntp.ubuntu.com$(lightyellow)
+# 	XKBLAYOUT = $(yellow)$LANG_CODE$(default)"
 
 # HOWTO CREATE ABOVE MANUALLY
 # Now on to the configuration of the root server.
@@ -379,9 +400,9 @@ echo "$(pcolor yellow)# Visit:
 #		Click Insert.
 # Done with editing the database. Now go to http:///ltsp-cluster-control/Admin/
 
-if ! [ -e /root/.aptrestart ]; then
-    touch /root/.aptrestart
-    echo "$(pcolor yellow)REBOOT...$(pcolor default)"
+if ! [ -e /root/ltsp-control01.reboot ]; then
+    touch /root/ltsp-control01.reboot
+    warning "REBOOTING..."
     reboot &
 fi
 

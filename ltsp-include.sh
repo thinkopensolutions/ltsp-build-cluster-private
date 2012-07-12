@@ -25,11 +25,38 @@
 
 source $(dirname $0)/ltsp.config
 
-if ! [ -e $ROOT_PASS_FILE ]; then
-    echo "Please create the file \"$ROOT_PASS_FILE\" with root password.
-chmod to 600"
-    exit
-fi
+HOSTNAME=$(hostname)
+
+function pcolor() {
+    case "$1" in
+		"red") echo -en "\033[0;31m";;
+		"lightred") echo -en "\033[1;31m";;
+		"green") echo -en "\033[0;32m";;
+		"lightgreen") echo -en "\033[1;32m";;
+		"yellow") echo -en "\033[0;33m";;
+		"lightyellow") echo -en "\033[1;33m";;
+		"blue") echo -en "\033[0;34m";;
+		"lightblue") echo -en "\033[1;34m";;
+		"cyan") echo -en "\033[0;36m";;
+		"lightcyan") echo -en "\033[1;36m";;
+		"white") echo -en "\033[0;37m";;
+		"bold") echo -en "\033[1;37m";;
+		*) echo -en "\033[0m";;
+	esac
+}
+function default() { pcolor default; }
+function red() { pcolor red; }
+function lightred() { pcolor lightred; }
+function green() { pcolor green; }
+function lightgreen() { pcolor lightgreen; }
+function yellow() { pcolor yellow; }
+function lightyellow() { pcolor lightyellow; }
+function blue() { pcolor blue; }
+function lightblue() { pcolor lightblue; }
+function cyan() { pcolor cyan; }
+function lightcyan() { pcolor lightcyan; }
+function white() { pcolor white; }
+function bold() { pcolor bold; }
 
 ###############################################################################
 # SOME PROXMOX DEFAULTS
@@ -44,123 +71,172 @@ WRONG_HOSTNAME_MSG="This script must be run only from host $(basename $0)"
 ADDED_BY_MSG="# Added by build-ltsp-cluster.sh"
 ADDED_BY_END_MSG="# end build-ltsp-cluster.sh"
 
-function pcolor() {
-    case "$1" in
-		"red") echo -en "\033[1;31m";;
-		"green") echo -en "\033[1;32m";;
-		"yellow") echo -en "\033[1;33m";;
-		*) echo -en "\033[0m";;
-	esac
-}
-
 function fail() {
-    echo "$(pcolor red)[ERROR]$(pcolor yellow)[$1]$(pcolor default) $2"
+    echo "$(red)[$(lightred)FAILURE$(red)] $(blue)[$(lightblue)$HOSTNAME$(blue)]$(default) $1"
     exit -1
 }
 
 function success() {
-    echo "$(pcolor green)[OK]$(pcolor yellow)[$1]$(pcolor default) $2"
+    echo "$(green)[$(lightgreen)SUCCESS$(green)] $(blue)[$(lightblue)$HOSTNAME$(blue)]$(default) $1"
+}
+
+function warning() {
+    echo "$(cyan)[$(lightcyan)WARNING$(cyan)] $(blue)[$(lightblue)$HOSTNAME$(blue)]$(default) $1"
+}
+
+function question() {
+    if [ -z "$2" ]; then
+        echo -n "$(lightyellow)$1?$(default) "
+    else
+        echo -n "$(lightyellow)$1 $(yellow)[$(lightyellow)$2$(yellow)]?$(default) "
+    fi
 }
 
 function add2rclocal() {
     file="/etc/rc.local"
     adding="$1"
-    if [ $(grep "$adding" "$file" | wc -l) -lt $(echo "$adding" | wc -l) ]; then
-        if [ $(grep "$ADDED_BY_END_MSG" "$file" | wc -l) -eq 1 ]; then
-            sed -i "s/$ADDED_BY_END_MSG/$adding\n$ADDED_BY_END_MSG/g" "$file" || fail $HOSTNAME "Adding \"$adding\" into $file"
+    if [ $(cat "$file" | grep "$adding" | wc -l) -lt $(echo "$adding" | wc -l) ]; then
+        adding=${adding//\//\\\/}
+        if [ $(cat "$file" | grep "$ADDED_BY_END_MSG" | wc -l) -eq 1 ]; then
+            sed -i "s/$ADDED_BY_END_MSG/$adding\n$ADDED_BY_END_MSG/g" "$file" || fail "Adding \"$(white)$1$(default)\" into $file"
         else
-            sed -i "s/^exit 0$//g" "$file" || fail $HOSTNAME "Adding \"$adding\" into $file"
+            sed -i "s/^exit 0$//g" "$file" || fail "Adding \"$(white)$1$(default)\" into $file"
             echo "$ADDED_BY_MSG
 $adding
 $ADDED_BY_END_MSG
 
-exit 0" >> "$file" || fail $HOSTNAME "Adding \"$adding\" into $file"
+exit 0" >> "$file" || fail "Adding \"$(white)$1$(default)\" into $file"
         fi
-        success $HOSTNAME "Adding \"$adding\" to file $file"
+        success "Adding \"$(white)$1$(default)\" to file $file"
     fi
+    ln -sf $file /root/ltsp-${file##*/} || fail "Creating link to file $file"
 }
 
 function add2file() {
     file="$1"
     adding="$2"
-    if [ $(grep "$adding" "$file" | wc -l) -lt $(echo "$adding" | wc -l) ]; then
-        if [ $(grep "$ADDED_BY_END_MSG" "$file" | wc -l) -eq 1 ]; then
+    add=${adding//\*/\\\*}
+    if ! [ $(cat "$file" | grep "$add" | wc -l) -gt 0 ]; then
+        if [ $(cat "$file" | grep "$ADDED_BY_END_MSG" | wc -l) -eq 1 ]; then
             adding=${adding//\//\\\/}
-            sed -i "s/$ADDED_BY_END_MSG/$adding\n$ADDED_BY_END_MSG/g" "$file" || fail $HOSTNAME "Adding \"$adding\" into $file"
+            adding=${adding//\*/\\\*}
+            sed -i "s/$ADDED_BY_END_MSG/$adding\n$ADDED_BY_END_MSG/g" "$file" || fail "Adding \"$(white)$2$(default)\" into $file"
         else
-            echo "$ADDED_BY_MSG
+            echo "
+$ADDED_BY_MSG
 $adding
 $ADDED_BY_END_MSG
-" >> "$file" || fail $HOSTNAME "Adding \"$adding\" into $file"
+" >> "$file" || fail "Adding \"$(white)$2$(default)\" into $file"
         fi
-        success $HOSTNAME "Adding \"$adding\" to file $file"
+        success "Adding \"$(white)$2$(default)\" to file $file"
     fi
+    ln -sf $file /root/ltsp-${file##*/} || fail "Creating link to file $file"
 }
 
+function replace() {
+    file="$1"
+    param="$2"
+    replace="$3"
+    param=${param//\//\\\/}
+    param=${param//\\n/\\n}
+    replace=${replace//\//\\\/}
+    replace=${replace//\\n/\\n}
+    sed --follow-symlinks -i "s/$param/$replace/g" "$file" || fail "Replacing \"$(white)$2$(default)\" with \"$(white)$3$(default)\" in $file"
+    success "Replacing \"$(white)$2$(default)\" with \"$(white)$3$(default)\" in $file"
+}
+
+# You call this function with 3 parameters (i) file, (ii) source to be replaced, (iii) new text
+# But you can also send a 4th one as a key to validate if a change is necessary
 function sed_file() {
     file="$1"
     param="$2"
     replace="$3"
-    if [ $(cat "$file" | grep -E "$param" | wc -l) -gt 0 ]; then
-        param=${param//\//\\\/}
-        param=${param//\\n/\\n}
-        replace=${replace//\//\\\/}
-        replace=${replace//\\n/\\n}
-        sed --follow-symlinks -i "s/$param/$replace/g" "$file" || fail $HOSTNAME "SED replacing \"$param\" with \"$replace\" in $file"
-        success $HOSTNAME "SED replacing \"$param\" with \"$replace\" in $file"
+    if [ -z "$4" ]; then
+        if [ $(cat "$file" | grep -E "$param" | wc -l) -gt 0 ]; then
+            replace "$file" "$param" "$replace"
+        fi
+    else
+        echo cat "$file" | grep -E "$4"
+        if ! [ $(cat "$file" | grep -E "$4" | wc -l) -gt 0 ]; then
+            replace "$file" "$param" "$replace"
+        fi
     fi
+    ln -sf $file /root/ltsp-${file##*/} || fail "Creating link to file $file"
 }
 
 function configure_lang() {
-    if ! [ "$LANG" == $LTSP_LANG -o $(grep $LTSP_LANG /etc/default/locale | wc -l) -eq 1 ]; then
-        locale-gen en_US.UTF-8 || fail $HOSTNAME "Generating locale en_US.UTF-8"
-        locale-gen $LTSP_LANG || fail $HOSTNAME "Generating locale $LTSP_LANG"
-        dpkg-reconfigure locales || fail $HOSTNAME "Configuring locales"
-        dpkg-reconfigure tzdata || fail $HOSTNAME "Configuring tzdata"
-        update-locale LANG=$LTSP_LANG LANGUAGE || fail $HOSTNAME "Setting LANG to $LTSP_LANG"
-        echo "$(pcolor yellow)Rebooting to set LANGUAGE $LTSP_LANG settings... (PLEASE RUN SCRIPT AGAIN)$(pcolor default)"
+    if ! [ "$LANG" == $LTSP_LANG -o $(grep $LTSP_LANG /etc/default/locale | wc -l) -gt 0 ]; then
+        locale-gen en_US.UTF-8 || fail "Generating locale en_US.UTF-8"
+        locale-gen $LTSP_LANG || fail "Generating locale $LTSP_LANG"
+        dpkg-reconfigure locales || fail "Configuring locales"
+        dpkg-reconfigure tzdata || fail "Configuring tzdata"
+        update-locale LANG=$LTSP_LANG LANGUAGE || fail "Setting LANG to $LTSP_LANG"
+        echo "$(yellow)Rebooting to set LANGUAGE $LTSP_LANG settings... (PLEASE RUN SCRIPT AGAIN)$(default)"
         /sbin/reboot
         exit 1
     fi
 }
 
 function update_applications() {
-    # Avoid to run
-    if ! [ -e /tmp/.apt ]; then
-        apt-get -y update || fail $HOSTNAME "Updating repository"
-        apt-get -y install htop tree || fail $HOSTNAME "Installing utilities"
-        apt-get -y dist-upgrade || fail $HOSTNAME "Dist-Upgrading"
-        touch /tmp/.apt
+    if ! [ -e /tmp/ltsp-include.update_applications ]; then
+        apt-get -y update || fail "Updating repository"
+        apt-get -y install htop tree || fail "Installing utilities"
+        apt-get -y dist-upgrade || fail "Dist-Upgrading"
+        touch /tmp/ltsp-include.update_applications
     fi
 }
 
 function install_ldap_client() {
-    # LDAP Client
-    ln -sf /etc/hosts /root/hosts
-    if ! [ $(cat /etc/hosts | grep ${APPs[$DHCP_LDAP01_SERVER]} | wc -l) -gt 0 ]; then
-        echo "$NETWORK.$DHCP_LDAP01_SERVER ${APPs[$DHCP_LDAP01_SERVER]}.$DOMAIN ${APPs[$DHCP_LDAP01_SERVER]}" >> /etc/hosts || fail "Adding ${APPs[$DHCP_LDAP01_SERVER]} to hosts"
-        echo "$NETWORK.$DHCP_LDAP02_SERVER ${APPs[$DHCP_LDAP02_SERVER]}.$DOMAIN ${APPs[$DHCP_LDAP02_SERVER]}" >> /etc/hosts || fail "Adding ${APPs[$DHCP_LDAP02_SERVER]} to hosts"
-    fi
-    
-    if ! [ $(grep ${APPs[$DHCP_LDAP01_SERVER]} /etc/ldap.conf | wc -l) -gt 0 ]; then
+    add2file /etc/hosts "$NETWORK.$DHCP_LDAP01_SERVER ${APPs[$DHCP_LDAP01_SERVER]}.$DOMAIN ${APPs[$DHCP_LDAP01_SERVER]}"
+    add2file /etc/hosts "$NETWORK.$DHCP_LDAP02_SERVER ${APPs[$DHCP_LDAP02_SERVER]}.$DOMAIN ${APPs[$DHCP_LDAP02_SERVER]}"
+    if ! [ -e /tmp/ltsp-include.install_ldap_client ]; then
         apt-get -y install auth-client-config ldap-auth-client ldap-auth-config libnss-ldap libpam-ldap || fail "Installing ldap client"
-        auth-client-config -t nss -p lac_ldap
-        #If you need to run setup again: dpkg-reconfigure ldap-auth-config
-        #If you need to run setup again: pam-auth-update
+        auth-client-config -t nss -p lac_ldap || fail "Running auth-client-config"
         add2file /etc/pam.d/common-session "session required pam_mkhomedir.so skel=/etc/skel/ umask=0077"
-        /etc/init.d/libnss-ldap restart
-        # URI in /etc/ldap.conf must be (both): ldap://ldap01.primeschool.pt ldap://ldap02.primeschool.pt
+        /etc/init.d/libnss-ldap restart || fail "Restarting libnss-ldap"
+        # If you need to run setup again:
+        #   dpkg-reconfigure ldap-auth-config
+        #   pam-auth-update
+        # URI in /etc/ldap.conf (should be both): ldap://ldap01.primeschool.pt ldap://ldap02.primeschool.pt
         # DN: dc=primeschool,dc=pt
         # Administrator: cn=admin,dc=primeschool,dc=pt
+        touch /tmp/ltsp-include.install_ldap_client
     fi
 }
 
 function install_nfs_client() {
-    # NFS
-    if ! [ $(grep $NETWORK.$DHCP_NFS_SERVER /etc/fstab | wc -l) -gt 0 ]; then
+    if ! [ -e /tmp/ltsp-include.install_nfs_client ]; then
         apt-get -y install nfs-common || fail "Installing NFS common"
         add2rclocal "start portmap"
         add2file /etc/fstab "$NETWORK.$DHCP_NFS_SERVER:/home /home nfs rsize=8192,wsize=8192,timeo=14,intr,nolock"
+        touch /tmp/ltsp-include.install_nfs_client
     fi
 }
 
+# Insert all servers in /etc/hosts
+VMIDs=$(for id in ${!APPs[@]}; do echo $id; done | sort -n)
+for VMID in $VMIDs; do
+    if ! [ "${APPs[$VMID]}" == "$HOSTNAME" ]; then
+        add2file /etc/hosts "$NETWORK.$VMID ${APPs[$VMID]}.$DOMAIN ${APPs[$VMID]}"
+    fi
+done
+IP=$APPSERV_START_IP
+for (( appserv=1; appserv<=$APPSERV_NUM; appserv++ ))
+do
+    num=$(printf "%02d" $appserv)
+    if ! [ "$APPSERV_NAME$num" == "$HOSTNAME" ]; then
+	    add2file /etc/hosts "$NETWORK.$IP $APPSERV_NAME$num.$DOMAIN $APPSERV_NAME$num"
+    fi
+	let IP+=1
+done
+add2file /etc/hosts "$NETWORK.$DHCP_CUPS_SERVER cups.$DOMAIN cups"
+
+# Check for root password
+if ! [ -e $ROOT_PASS_FILE ]; then
+    warning "This script has to give the root password to create the containers.
+The password you will insert here will be stored in \"$(white)$ROOT_PASS_FILE$(default)\" with 0600 mode."
+    echo -n "Please insert the root password: "
+    read pass
+    echo $pass > $ROOT_PASS_FILE
+    chmod 600 $ROOT_PASS_FILE
+fi

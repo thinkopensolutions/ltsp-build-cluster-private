@@ -25,7 +25,6 @@
 
 # LDAP Server Consumer (HA REPLICATION)
 . $(dirname $0)/ldap-include.sh
-HOSTNAME=$(hostname)
 if ! [ "$(basename $0)" == "$HOSTNAME.sh" ]; then fail $HOSTNAME "$WRONG_HOSTNAME_MSG"; fi
 
 # Upstream documentation https://help.ubuntu.com/12.04/serverguide/openldap-server.html
@@ -33,19 +32,19 @@ if ! [ "$(basename $0)" == "$HOSTNAME.sh" ]; then fail $HOSTNAME "$WRONG_HOSTNAM
 configure_lang
 update_applications
 
-if ! [ -e /tmp/.aptinstall ]; then
-    touch /tmp/.aptinstall
+if ! [ -e /tmp/ldap02.install ]; then
     apt-get -y install slapd ldap-utils gnutls-bin ssl-cert || fail "Installing LDAP Server and Client (to webmin)"
-    apt-get -y autoremove
+    apt-get -y autoremove && apt-get -y autoclean || fail "Cleaning"
+    touch /tmp/ldap02.install
 fi
 
-install_webmin
-install_ldap_client
-install_nfs_client
+install_webmin || fail "Installing webmin"
+install_ldap_client || fail "Installing LDAP client"
+install_nfs_client || fail "Installing NFS client"
 
 sed_file /etc/ldap.conf "^#host 127.0.0.1$" "host 127.0.0.1"
-sed_file /etc/ldap.conf "^uri ldap://${APPs[$DHCP_LDAP02_SERVER]}" "#uri ldap://${APPs[$DHCP_LDAP02_SERVER]}"
+sed_file /etc/ldap.conf "^uri ldap" "#uri ldap"
 
-add_indexes
-replication_consumer_side
+add_indexes || fail "Adding indexes"
+replication_consumer_side || fail "Configurating replication"
 

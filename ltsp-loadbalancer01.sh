@@ -25,22 +25,24 @@
 
 # LTSP Load Balancer
 . $(dirname $0)/ltsp-include.sh
-HOSTNAME=$(hostname)
 if ! [ "$(basename $0)" == "$HOSTNAME.sh" ]; then fail $HOSTNAME "$WRONG_HOSTNAME_MSG"; fi
+
+# Get ubuntu distribution
+. /etc/lsb-release
 
 configure_lang
 update_applications
 
-if ! [ -e /tmp/.aptinstall ]; then
-    touch /tmp/.aptinstall
+if ! [ -e /tmp/ltsp-loadbalancer01.install ]; then
     apt-get -y install ltsp-cluster-lbserver  || fail "Installing ltsp-cluster-lbserver"
-    install_ldap_client
-    install_nfs_client
-    apt-get -y autoremove
+    apt-get -y autoremove && apt-get -y autoclean || fail "Cleaning"
+    touch /tmp/ltsp-loadbalancer01.install
 fi
 
-ln -sf /etc/hosts /root/hosts
-ln -sf /etc/ltsp/lbsconfig.xml /root/lbsconfig.xml
+install_ldap_client || fail "Installing LDAP client"
+install_nfs_client || fail "Installing NFS client"
+
+# Insert all applications servers to configuration file
 ip=$APPSERV_START_IP
 for (( appserv=1; appserv<=$APPSERV_NUM; appserv++ ))
 do
@@ -55,13 +57,13 @@ do
 done
 
 # Configure lbs
-sed_file "/etc/ltsp/lbsconfig.xml" "yourdomain.com" "$DOMAIN"
-sed_file "/etc/ltsp/lbsconfig.xml" "max-threads=\"2\"" "max-threads=\"1\""
-sed_file "/etc/ltsp/lbsconfig.xml" "<group default=\"true\" name=\"default\">" "<group default=\"true\" name=\"$DISTRIB_CODENAME\">"
+sed_file /etc/ltsp/lbsconfig.xml "yourdomain.com" "$DOMAIN"
+sed_file /etc/ltsp/lbsconfig.xml "max-threads=\"2\"" "max-threads=\"1\""
+sed_file /etc/ltsp/lbsconfig.xml "<group default=\"true\" name=\"default\">" "<group default=\"true\" name=\"$DISTRIB_CODENAME\">"
 
-if ! [ -e /root/.aptrestart ]; then
-    touch /root/.aptrestart
-    echo "$(pcolor yellow)REBOOT...$(pcolor default)"
+if ! [ -e /root/ltsp-loadbalancer01.reboot ]; then
+    touch /root/ltsp-loadbalancer01.reboot
+    warning "REBOOTING..."
     reboot &
 fi
 

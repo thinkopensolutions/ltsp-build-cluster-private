@@ -25,31 +25,25 @@
 
 # NFS01
 . $(dirname $0)/ltsp-include.sh
-HOSTNAME=$(hostname)
 if ! [ "$(basename $0)" == "$HOSTNAME.sh" ]; then fail $HOSTNAME "$WRONG_HOSTNAME_MSG"; fi
 
 configure_lang
 update_applications
 
-if ! [ -e /tmp/.aptinstall ]; then
-    touch /tmp/.aptinstall
-    apt-get -y install nfs-kernel-server || fail $HOSTNAME "Installing nfs-kernel-server"
-    install_ldap_client
-    apt-get -y autoremove
+if ! [ -e /tmp/ltsp-nfs01.install ]; then
+    apt-get -y install nfs-kernel-server || fail "Installing nfs-kernel-server"
+    apt-get -y autoremove && apt-get -y autoclean || fail "Cleaning"
+    touch /tmp/ltsp-nfs01.install
 fi
 
-if ! [ $(cat /etc/exports | grep "# LTSP Home mount point" | wc -l) -gt 0 ]; then
-    ln -sf /etc/exports /root/exports
-    echo "/home    *(rw,sync,no_root_squash,no_subtree_check) # LTSP Home mount point" >> /etc/exports || fail $HOSTNAME "Adding to exports"
-fi
+install_ldap_client || fail "Installing LDAP client"
 
-if ! [ $(cat /etc/rc.local | grep "start portmap" | wc -l) -gt 0 ]; then
-    sed -i "s/^exit 0$/start portmap\n\nexit 0/g" /etc/rc.local || fail $HOSTNAME "SEDing rc.local"
-    start portmap
-fi
+add2rclocal "start portmap"
+add2rclocal "/etc/init.d/nfs-kernel-server start"
+add2file /etc/exports "/home *(rw,sync,no_root_squash,no_subtree_check) # LTSP Home mount point"
 
-if ! [ $(cat /etc/rc.local | grep "nfs-kernel-server" | wc -l) -gt 0 ]; then
-    sed -i "s/^exit 0$/\/etc\/init.d\/nfs-kernel-server start\n\nexit 0/g" /etc/rc.local || fail $HOSTNAME "SEDing rc.local"
-    /etc/init.d/nfs-kernel-server start
+if ! [ -e /root/ltsp-nfs01.reboot ]; then
+    touch /root/ltsp-nfs01.reboot
+    warning "REBOOTING..."
+    reboot &
 fi
-

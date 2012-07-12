@@ -25,26 +25,25 @@
 
 # LTSP Root
 . $(dirname $0)/ltsp-include.sh
-HOSTNAME=$(hostname)
 if ! [ "$(basename $0)" == "$HOSTNAME.sh" ]; then fail $HOSTNAME "$WRONG_HOSTNAME_MSG"; fi
 
 function build_client() {
     # Build LTSP Client
-    echo "$(pcolor yellow)When asked for ltsp-cluster settings answer as follow:
+    warning "When asked for ltsp-cluster settings answer as follow:
     Server: $NETWORK.$DHCP_CONTROL_SERVER
     Port: 80
     Enable SSL: N
     Inventory: Y
     Timeout: 2
 Then when asked, insert the root password.
-Options are saved in: [/opt/ltsp/i386/etc/ltsp/getltscfg-cluster.conf]$(pcolor default)"
-    ln -sf /opt/ltsp/i386/etc/ltsp/getltscfg-cluster.conf /root/getltscfg-cluster.conf
+Options are saved in: [$(white)/opt/ltsp/i386/etc/ltsp/getltscfg-cluster.conf$(default)]"
+    ln -sf /opt/ltsp/i386/etc/ltsp/getltscfg-cluster.conf /root/ltsp-getltscfg-cluster.conf
     ltsp-build-client --arch i386 --ltsp-cluster --prompt-rootpass --accept-unsigned-packages --copy-package-lists --locale $LTSP_LANG --copy-sourceslist --skipimage || fail "Building client"
     # --extra-mirror http://ppa.launchpad.net/stgraber/ubuntu
     # --fat-client
     # I could build fat clients since the computers I am using have 1GB RAM and dual core processors.
     # THEME
-    ln -sf /opt/ltsp/i386/usr/share/ldm/themes/ /root/themes
+    ln -sf /opt/ltsp/i386/usr/share/ldm/themes/ /root/ltsp-themes
     rsync -a $(dirname $0)/prime_theme /opt/ltsp/i386/usr/share/ldm/themes/
     pushd /opt/ltsp/i386/usr/share/ldm/themes/
     rm default
@@ -56,17 +55,18 @@ Options are saved in: [/opt/ltsp/i386/etc/ltsp/getltscfg-cluster.conf]$(pcolor d
 configure_lang
 update_applications
 
-if ! [ -e /tmp/.aptinstall ]; then
-    touch /tmp/.aptinstall
+if ! [ -e /tmp/ltsp-root01.install ]; then
     apt-get -y install ltsp-server || fail "Installing ltsp-server"
-    install_ldap_client
-    install_nfs_client
-    apt-get -y autoremove
+    apt-get -y autoremove && apt-get -y autoclean || fail "Cleaning"
+    touch /tmp/ltsp-root01.install
 fi
+
+install_ldap_client || fail "Installing LDAP client"
+install_nfs_client || fail "Installing NFS client"
 
 if [ -e /opt/ltsp/i386 ]; then
     if [[ $ASK_TO_REBUILD_ROOT_CLIENT -eq 1 ]]; then
-        echo -n "$(pcolor yellow)Do you want to rebuild the LTSP client again [y/N]?$(pcolor default) "
+        question "Do you want to rebuild the LTSP client again" "y/N"
         read answer
         if [ "$answer" == "y" ]; then
             "rm" -R /opt/ltsp/i386
@@ -77,8 +77,8 @@ else
     build_client
 fi
 
-if ! [ -e /root/.aptrestart ]; then
-    touch /root/.aptrestart
-    echo "$(pcolor yellow)REBOOT...$(pcolor default)"
+if ! [ -e /root/ltsp-root01.reboot ]; then
+    touch /root/ltsp-root01.reboot
+    warning "REBOOTING..."
     reboot &
 fi

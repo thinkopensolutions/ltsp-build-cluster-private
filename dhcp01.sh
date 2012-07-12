@@ -25,26 +25,22 @@
 
 # DHCP01
 . $(dirname $0)/ltsp-include.sh
-HOSTNAME=$(hostname)
 if ! [ "$(basename $0)" == "$HOSTNAME.sh" ]; then fail $HOSTNAME "$WRONG_HOSTNAME_MSG"; fi
 
 configure_lang
 update_applications
 
-if ! [ -e /tmp/.aptinstall ]; then
-    touch /tmp/.aptinstall
-    apt-get -y install isc-dhcp-server
-    apt-get -y autoremove
+if ! [ -e /tmp/dhcp01.install ]; then
+    apt-get -y install isc-dhcp-server || fail "Installing isc-dhcp-server"
+    apt-get -y autoremove && apt-get -y autoclean || fail "Cleaning"
+    touch /tmp/dhcp01.install
 fi
 
 dhcp_file="/etc/dhcp/dhcpd.conf"
 
-ln -sf $dhcp_file /root/dhcpd.conf
-ln -sf /etc/default/isc-dhcp-server /root/isc-dhcp-server
-#sed_file $dhcp_file "^#authoritative;$" "authoritative;"
 sed_file $dhcp_file "^option domain-name" "# option domain-name"
 sed_file /etc/default/isc-dhcp-server "^INTERFACES=\"\"$" "INTERFACES=\"eth0\""
-  
+
 if ! [ $(grep "failover peer" $dhcp_file | wc -l) -gt 0 ]; then
     echo "$ADDED_BY_MSG
 failover peer \"dhcp-failover\" {
@@ -89,12 +85,12 @@ subnet $NETWORK.0 netmask 255.255.255.0 {
     hardware ethernet C6:8B:99:9C:99:50;
     fixed-address 172.31.100.241;
   }
-}" >> $dhcp_file || fail $HOSTNAME "Appending to $dhcp_file file"
+}" >> $dhcp_file || fail "Appending to $dhcp_file file"
 fi
 
-if ! [ -e /root/.aptrestart ]; then
-    touch /root/.aptrestart
-    echo "$(pcolor yellow)REBOOT...$(pcolor default)"
+if ! [ -e /root/dhcp01.reboot ]; then
+    touch /root/dhcp01.reboot
+    warning "REBOOTING..."
     reboot &
 fi
 
