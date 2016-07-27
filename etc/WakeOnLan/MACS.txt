@@ -1,0 +1,14 @@
+#Host 172.31.100.1 proxmox01
+E6:ED:90:62:E4:2b
+#Host 172.31.100.2 proxmox02
+00:18:FE:6E:78:06
+#Host 172.31.100.3 proxmox03
+00:19:BB:4A:47:A8
+#Host 172.31.100.4 proxmox04
+00:19:BB:4A:7E:EF
+#Host 172.31.100.5 proxmox05
+00:19:BB:4A:80:B8
+#Host 172.31.100.6 proxmox06
+00:19:BB:5F:64:2E
+#Host 172.31.100.7 proxmox07
+00:19:BB:4A:81:BD
